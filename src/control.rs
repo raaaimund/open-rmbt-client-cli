@@ -3,21 +3,23 @@ use serde::{Deserialize, Serialize};
 
 /// Parameters returned by the control server for a single test session.
 pub struct TestParams {
-    pub token:       String,
-    pub test_uuid:   Option<String>,
-    pub server_addr: String,
-    pub server_port: u16,
-    pub encryption:  bool,
-    pub duration:    u32,
-    pub num_threads: u32,
-    pub wait:        u32,
-    pub server_type: String,
+    pub token:          String,
+    pub test_uuid:      Option<String>,
+    pub open_test_uuid: Option<String>,
+    pub server_addr:    String,
+    pub server_port:    u16,
+    pub encryption:     bool,
+    pub duration:       u32,
+    pub num_threads:    u32,
+    pub wait:           u32,
+    pub server_type:    String,
 }
 
 // ─── Wire types ───────────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
 struct SettingsRequest<'a> {
+    name:        &'a str,
     #[serde(rename = "type")]
     client_type: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -65,6 +67,7 @@ struct TestRequest<'a> {
 struct TestResponse {
     test_token:             Option<String>,
     test_uuid:              Option<String>,
+    open_test_uuid:         Option<String>,
     test_server_address:    Option<String>,
     test_server_port:       Option<serde_json::Value>,
     test_server_encryption: Option<bool>,
@@ -159,6 +162,7 @@ pub fn request_settings(host: &str, uuid: Option<&str>, debug: bool) -> Result<S
     let url  = format!("{base}/RMBTControlServer/settings");
 
     let body = serde_json::to_value(SettingsRequest {
+        name:                          "RMBT",
         client_type:                   "DESKTOP",
         uuid,
         language:                      "en",
@@ -271,15 +275,16 @@ pub fn request_test(host: &str, uuid: Option<&str>, use_ws: bool, debug: bool) -
     };
 
     Ok(TestParams {
-        token:       resp.test_token.context("missing test_token")?,
-        test_uuid:   resp.test_uuid,
-        server_addr: resp.test_server_address.context("missing test_server_address")?,
+        token:          resp.test_token.context("missing test_token")?,
+        test_uuid:      resp.test_uuid,
+        open_test_uuid: resp.open_test_uuid,
+        server_addr:    resp.test_server_address.context("missing test_server_address")?,
         server_port,
-        encryption:  resp.test_server_encryption.unwrap_or(true),
-        duration:    resp.test_duration.unwrap_or(10),
-        num_threads: resp.test_numthreads.unwrap_or(4),
-        wait:        resp.test_wait.unwrap_or(0),
-        server_type: resp.test_server_type.unwrap_or_default(),
+        encryption:     resp.test_server_encryption.unwrap_or(true),
+        duration:       resp.test_duration.unwrap_or(10),
+        num_threads:    resp.test_numthreads.unwrap_or(4),
+        wait:           resp.test_wait.unwrap_or(0),
+        server_type:    resp.test_server_type.unwrap_or_default(),
     })
 }
 

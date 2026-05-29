@@ -108,7 +108,7 @@ impl RmbtConn {
     /// `CHUNKSIZE`.  Sets `self.chunk_size` from the server's announcement.
     pub fn greeting(&mut self, token: &str) -> Result<()> {
         let version = self.read_line()?;
-        if !version.starts_with("RMBTv") {
+        if !version.trim_start_matches(|c: char| c == '\0' || c.is_whitespace()).starts_with("RMBTv") {
             bail!("unexpected greeting: {version}");
         }
 

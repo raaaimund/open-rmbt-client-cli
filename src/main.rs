@@ -270,13 +270,17 @@ fn main() -> Result<()> {
         test_uuid:               params.test_uuid.clone(),
         time:                    test_begin_ms,
         timezone:                "UTC".into(),
-        client_type:             "DESKTOP".into(),
+        client_type:             "CLI".into(),
         version_code:            "1".into(),
         speed_detail,
         user_server_selection:   false,
         test_status:             "0".into(),
         test_port_remote:        Some(port),
     };
+
+    if let Some(ref otu) = params.open_test_uuid {
+        println!("Result:         https://www.netztest.at/share/{otu}");
+    }
 
     println!("\nSubmitting results to control server…");
     control::submit_result(host, &result, debug)?;
