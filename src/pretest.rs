@@ -44,10 +44,12 @@ pub fn run_pretest(
     let server_min = conn.chunk_size_min;
     let server_max = conn.chunk_size_max;
 
-    let t_start   = Instant::now();
-    let mut cs    = server_min.max(MIN_CHUNK);
-    let mut n     = 1usize;
-    let mut total = 0u64;
+    let t_start        = Instant::now();
+    let mut cs         = server_min.max(MIN_CHUNK);
+    let mut n          = 1usize;
+    let mut last_bytes = 0u64;
+    let mut last_ns    = 0u64;  // TIME from the last (largest) GETCHUNKS batch
+    let mut rtt_ns     = 0u64;  // TIME of the first (tiny) batch ≈ round-trip time
 
     loop {
         if t_start.elapsed() >= PRETEST_DURATION { break; }
@@ -63,10 +65,14 @@ pub fn run_pretest(
         for _ in 0..n {
             conn.read_exact(&mut buf)?;
         }
-        total += (n as u64) * (cs as u64);
+        last_bytes = (n as u64) * (cs as u64);
 
         conn.write_line("OK")?;
-        let _ = conn.read_line()?; // discard TIME <ns>
+        let time_line = conn.read_line()?;
+        if let Ok(ns) = crate::tests::parse_time_ns(&time_line) {
+            if rtt_ns == 0 { rtt_ns = ns; }  // first tiny batch ≈ RTT
+            last_ns = ns;
+        }
 
         // Exponential progression: double n until n≥8, then double chunk size.
         if n >= 8 {
@@ -77,9 +83,17 @@ pub fn run_pretest(
         }
     }
 
-    let elapsed = t_start.elapsed();
-    let bps     = total as f64 / elapsed.as_secs_f64();
-    let mbps    = bps * 8.0 / 1_000_000.0;
+    // TIME = transmission_time + RTT.  Subtract the RTT estimate (from the
+    // first tiny batch where transmission time ≈ 0) to get actual throughput.
+    let transfer_ns = last_ns.saturating_sub(rtt_ns);
+    let bps = if transfer_ns > 0 {
+        last_bytes as f64 / (transfer_ns as f64 / 1_000_000_000.0)
+    } else if last_ns > 0 {
+        last_bytes as f64 / (last_ns as f64 / 1_000_000_000.0)
+    } else {
+        last_bytes as f64 / t_start.elapsed().as_secs_f64()
+    };
+    let mbps = bps * 8.0 / 1_000_000.0;
 
     // Target 50 chunks/sec (1 chunk per 20 ms), rounded to the nearest KiB.
     let ideal     = (bps / 50.0) as usize;
