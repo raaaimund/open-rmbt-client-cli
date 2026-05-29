@@ -143,15 +143,23 @@ fn main() -> Result<()> {
         params.num_threads.min(MAX_THREADS as u32) as usize,
     )?;
 
-    let server_cap = params.num_threads.min(MAX_THREADS as u32) as usize;
-    let dl_threads = threads_ovr.unwrap_or(pt.dl_threads).max(1).min(server_cap);
-    let ul_threads = threads_ovr.unwrap_or(pt.ul_threads).max(1).min(server_cap);
-    let chunk_size = pt.chunk_size;
+    let server_cap    = params.num_threads.min(MAX_THREADS as u32) as usize;
+    let dl_threads    = threads_ovr.unwrap_or(pt.dl_threads).max(1).min(server_cap);
+    let ul_threads    = threads_ovr.unwrap_or(pt.ul_threads).max(1).min(server_cap);
+    let dl_chunk_size = pt.chunk_size;
+    // Many servers use read() (not readFully()) for upload, so they get
+    // partial reads bounded by the TLS record size (~16 KB). With very large
+    // chunks (4 MB = 256 reads/chunk) the probability of a false-positive
+    // terminal-byte detection per chunk exceeds 60%, causing Broken Pipe.
+    // Cap the upload chunk at 512 KB where partial-read false positives are
+    // rare in practice (~5% per chunk) and the server handles them gracefully.
+    const MAX_UL_CHUNK: usize = 512 * 1024;
+    let ul_chunk_size = dl_chunk_size.min(MAX_UL_CHUNK);
 
     println!(
         "\nTest plan: dl_threads={dl_threads}  ul_threads={ul_threads}  \
-         chunk={} KiB  duration={}s",
-        chunk_size / 1024, duration
+         dl_chunk={} KiB  ul_chunk={} KiB  duration={}s",
+        dl_chunk_size / 1024, ul_chunk_size / 1024, duration
     );
 
     // Record test begin time for the submission payload.
@@ -176,14 +184,14 @@ fn main() -> Result<()> {
     println!("\nDownload ({dl_threads} thread(s), {duration}s):");
     let dl_results = run_phase(
         dl_threads, &addr, port, params.encryption, no_tls_verify, protocol, &token,
-        move |conn, tid| tests::run_download(conn, duration, chunk_size, tid),
+        move |conn, tid| tests::run_download(conn, duration, dl_chunk_size, tid),
     )?;
 
     // ── Step 5: upload ───────────────────────────────────────────────────────
     println!("\nUpload ({ul_threads} thread(s), {duration}s):");
     let ul_results = run_phase(
         ul_threads, &addr, port, params.encryption, no_tls_verify, protocol, &token,
-        move |conn, tid| tests::run_upload(conn, duration, chunk_size, tid, intermediate),
+        move |conn, tid| tests::run_upload(conn, duration, ul_chunk_size, tid, intermediate),
     )?;
 
     // ── Step 6: aggregate results ─────────────────────────────────────────────

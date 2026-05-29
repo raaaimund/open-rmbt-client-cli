@@ -78,6 +78,7 @@ impl RmbtConn {
             .with_context(|| format!("cannot connect to {addr}"))?;
         tcp.set_read_timeout(Some(SOCKET_TIMEOUT))?;
         tcp.set_write_timeout(Some(SOCKET_TIMEOUT))?;
+        tcp.set_nodelay(true)?;
 
         let mut transport = if use_tls {
             build_tls(tcp, host, no_tls_verify)?
@@ -193,8 +194,13 @@ impl RmbtConn {
         match &mut self.inner {
             ConnInner::Raw(r) => {
                 let w = r.get_mut();
-                w.write_all(s.as_bytes())?;
-                w.write_all(b"\n")?;
+                // Single write_all so rustls creates one TLS record for the
+                // whole line; splitting into two calls can produce two records
+                // and Nagle holds the second until the first is ACKed (~40ms).
+                let mut buf = Vec::with_capacity(s.len() + 1);
+                buf.extend_from_slice(s.as_bytes());
+                buf.push(b'\n');
+                w.write_all(&buf)?;
                 w.flush()?;
             }
             ConnInner::Ws(ws) => {
