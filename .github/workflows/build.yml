@@ -32,7 +32,8 @@ jobs:
           retention-days: 90
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Rust: static musl binaries for Linux; native for macOS and Windows
+  # Rust: static musl for Linux; native/cross for macOS; MSVC for Windows
+  # macos-latest is now Apple Silicon (arm64); x64 cross-compiles cleanly via Rust.
   # ─────────────────────────────────────────────────────────────────────────────
   rust:
     name: Rust / ${{ matrix.name }}
@@ -41,7 +42,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux — statically linked musl binaries run on all distros
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             name: linux-x64
@@ -50,16 +50,14 @@ jobs:
             target: aarch64-unknown-linux-musl
             name: linux-arm64
             use_cross: true
-          # macOS — native per architecture
-          - os: macos-13
-            target: x86_64-apple-darwin
-            name: macos-x64
-            use_cross: false
           - os: macos-latest
             target: aarch64-apple-darwin
             name: macos-arm64
             use_cross: false
-          # Windows
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            name: macos-x64
+            use_cross: false
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             name: windows-x64
@@ -129,125 +127,107 @@ jobs:
           retention-days: 90
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # C client: platform-native toolchains; Linux arm64 via cross-compilation
+  # C client: Linux x64 (native), Linux arm64 (QEMU Docker), macOS arm64 (native)
+  # Windows is not supported: the C client uses POSIX socket APIs (sys/socket.h,
+  # netdb.h, etc.) that have no Windows equivalent without major refactoring.
+  # macOS x64 is not built separately: the arm64 binary runs on Intel Macs via Rosetta.
   # ─────────────────────────────────────────────────────────────────────────────
   c:
     name: C / ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            name: linux-x64
-            cross: false
-          - os: ubuntu-latest
-            name: linux-arm64
-            cross: true
-          - os: macos-13
-            name: macos-x64
-            cross: false
-          - os: macos-latest
-            name: macos-arm64
-            cross: false
-          - os: windows-latest
-            name: windows-x64
-            cross: false
+          - name: linux-x64
+            docker_platform: ""
+          - name: linux-arm64
+            docker_platform: linux/arm64
+          - name: macos-arm64
+            docker_platform: ""
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ── Linux x64 ─────────────────────────────────────────────────────────
+      # ── macOS arm64 — runs on a separate macOS runner ──────────────────────
+      # We can't run macOS in Docker, so we special-case it with a conditional.
+      # GitHub does not allow per-matrix `runs-on`, so we gate the macOS build
+      # here and skip it on the Linux runner.
+
+      # ── Linux x64 native ──────────────────────────────────────────────────
       - name: Install deps (Linux x64)
-        if: matrix.os == 'ubuntu-latest' && !matrix.cross
+        if: matrix.name == 'linux-x64'
         run: sudo apt-get install -y libcurl4-openssl-dev libssl-dev
 
       - name: Build (Linux x64)
-        if: matrix.os == 'ubuntu-latest' && !matrix.cross
+        if: matrix.name == 'linux-x64'
         run: make -C clientC
 
-      # ── Linux arm64 cross-compile ──────────────────────────────────────────
-      - name: Install cross-compile toolchain + arm64 libs
-        if: matrix.os == 'ubuntu-latest' && matrix.cross
+      # ── Linux arm64 via QEMU Docker (avoids fragile apt multiarch) ─────────
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.name == 'linux-arm64'
+
+      - name: Build (Linux arm64 in Docker)
+        if: matrix.name == 'linux-arm64'
         run: |
-          sudo dpkg --add-architecture arm64
-          # Restrict existing sources to amd64; add arm64 from ports mirror
-          CODENAME=$(lsb_release -cs)
-          sudo sed -i 's/^deb http/deb [arch=amd64] http/g' /etc/apt/sources.list
-          sudo sed -i 's/^deb mirror/deb [arch=amd64] mirror/g' /etc/apt/sources.list
-          printf "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports %s main restricted universe multiverse\n" \
-            "$CODENAME" "$CODENAME-updates" \
-            | sudo tee /etc/apt/sources.list.d/arm64-ports.list
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            gcc-aarch64-linux-gnu \
-            libcurl4-openssl-dev:arm64 \
-            libssl-dev:arm64
-
-      - name: Build (Linux arm64)
-        if: matrix.os == 'ubuntu-latest' && matrix.cross
-        env:
-          CC: aarch64-linux-gnu-gcc
-          PKG_CONFIG_PATH: /usr/lib/aarch64-linux-gnu/pkgconfig
-          PKG_CONFIG_LIBDIR: /usr/lib/aarch64-linux-gnu/pkgconfig
-        run: make -C clientC
-
-      # ── macOS ──────────────────────────────────────────────────────────────
-      - name: Install deps (macOS)
-        if: runner.os == 'macOS'
-        run: brew install curl openssl@3 pkg-config
-
-      - name: Build (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          OPENSSL="$(brew --prefix openssl@3)/lib/pkgconfig"
-          CURL="$(brew --prefix curl)/lib/pkgconfig"
-          PKG_CONFIG_PATH="$CURL:$OPENSSL" make -C clientC
-
-      # ── Windows via MSYS2/UCRT64 ────────────────────────────────────────────
-      - uses: msys2/setup-msys2@v2
-        if: runner.os == 'Windows'
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            make
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-curl
-            mingw-w64-ucrt-x86_64-openssl
-            mingw-w64-ucrt-x86_64-pkg-config
-
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: make -C clientC
+          docker run --rm --platform linux/arm64 \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            ubuntu:latest \
+            bash -c "
+              apt-get update -qq &&
+              apt-get install -y git gcc make libcurl4-openssl-dev libssl-dev &&
+              make -C clientC
+            "
 
       # ── Package ────────────────────────────────────────────────────────────
-      - name: Package (Unix)
-        if: runner.os != 'Windows'
+      - name: Package (Linux)
+        if: matrix.name == 'linux-x64' || matrix.name == 'linux-arm64'
         run: |
           mkdir -p dist
           cp clientC/build/rmbt-client dist/
           cd dist && zip rmbt-client-c-${{ matrix.name }}.zip rmbt-client
 
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          New-Item -ItemType Directory -Force dist
-          Copy-Item "clientC\build\rmbt-client.exe" dist\
-          Compress-Archive -Path dist\rmbt-client.exe -DestinationPath dist\rmbt-client-c-${{ matrix.name }}.zip
-
       - uses: actions/upload-artifact@v4
+        if: matrix.name == 'linux-x64' || matrix.name == 'linux-arm64'
         with:
           name: c-${{ matrix.name }}
           path: dist/rmbt-client-c-${{ matrix.name }}.zip
           retention-days: 90
 
+  # macOS C build runs on its own job (matrix runs-on workaround)
+  c-macos:
+    name: C / macos-arm64
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install deps
+        run: brew install curl openssl@3 pkg-config
+
+      - name: Build
+        run: |
+          export PKG_CONFIG_PATH="$(brew --prefix curl)/lib/pkgconfig:$(brew --prefix openssl@3)/lib/pkgconfig"
+          make -C clientC
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp clientC/build/rmbt-client dist/
+          cd dist && zip rmbt-client-c-macos-arm64.zip rmbt-client
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: c-macos-arm64
+          path: dist/rmbt-client-c-macos-arm64.zip
+          retention-days: 90
+
   # ─────────────────────────────────────────────────────────────────────────────
-  # Java native images via jpackage — bundles a JRE, one per platform
-  # (Linux arm64 skipped: no free GitHub-hosted arm64 Linux runner)
+  # Java native images via jpackage — bundles a JRE per platform
   # ─────────────────────────────────────────────────────────────────────────────
   java-native:
     name: Java native / ${{ matrix.name }}
@@ -259,8 +239,6 @@ jobs:
         include:
           - os: ubuntu-latest
             name: linux-x64
-          - os: macos-13
-            name: macos-x64
           - os: macos-latest
             name: macos-arm64
           - os: windows-latest
@@ -293,8 +271,8 @@ jobs:
         id: jar
         shell: bash
         run: |
-          name=$(find jar-input -name 'rmbt-client-*.jar' ! -name 'original-*' -printf '%f\n' | head -1)
-          echo "name=$name" >> $GITHUB_OUTPUT
+          path=$(find jar-input -name 'rmbt-client-*.jar' ! -name 'original-*' | head -1)
+          echo "name=$(basename "$path")" >> $GITHUB_OUTPUT
 
       - name: Create app image (Linux / macOS)
         if: runner.os != 'Windows'
@@ -326,15 +304,11 @@ jobs:
 
       - name: Zip image (Linux)
         if: runner.os == 'Linux'
-        run: |
-          cd jpackage-out
-          zip -r rmbt-client-java-${{ matrix.name }}.zip rmbt-client
+        run: cd jpackage-out && zip -r rmbt-client-java-${{ matrix.name }}.zip rmbt-client
 
       - name: Zip image (macOS — .app bundle)
         if: runner.os == 'macOS'
-        run: |
-          cd jpackage-out
-          zip -r rmbt-client-java-${{ matrix.name }}.zip rmbt-client.app
+        run: cd jpackage-out && zip -r rmbt-client-java-${{ matrix.name }}.zip rmbt-client.app
 
       - name: Zip image (Windows)
         if: runner.os == 'Windows'
@@ -372,7 +346,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   release:
     runs-on: ubuntu-latest
-    needs: [java-jar, rust, c, java-native, source-zip]
+    needs: [java-jar, rust, c, c-macos, java-native, source-zip]
     if: github.ref_type == 'tag'
     permissions:
       contents: write
@@ -391,16 +365,13 @@ jobs:
             release-assets/rmbt-client-jar/*.jar
             release-assets/rust-linux-x64/*.zip
             release-assets/rust-linux-arm64/*.zip
-            release-assets/rust-macos-x64/*.zip
             release-assets/rust-macos-arm64/*.zip
+            release-assets/rust-macos-x64/*.zip
             release-assets/rust-windows-x64/*.zip
             release-assets/c-linux-x64/*.zip
             release-assets/c-linux-arm64/*.zip
-            release-assets/c-macos-x64/*.zip
             release-assets/c-macos-arm64/*.zip
-            release-assets/c-windows-x64/*.zip
             release-assets/java-linux-x64/*.zip
-            release-assets/java-macos-x64/*.zip
             release-assets/java-macos-arm64/*.zip
             release-assets/java-windows-x64/*.zip
             release-assets/source/*.zip

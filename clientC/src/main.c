@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <pthread.h>
+#include "pthread_barrier_compat.h"
 #include <time.h>
 #include <stdint.h>
 #include <openssl/ssl.h>
