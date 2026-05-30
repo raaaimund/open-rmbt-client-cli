@@ -446,7 +446,7 @@ RmbtConn *conn_connect(const char *host, uint16_t port,
      * immediately; two-write sequences otherwise stall ~40 ms due to the
      * server-side delayed-ACK timer. */
     int one = 1;
-    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&one, sizeof(one));
 
     RmbtConn *c = calloc(1, sizeof(*c));
     if (!c) { close(fd); return NULL; }

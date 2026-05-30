@@ -89,13 +89,21 @@ pub fn run_download(
 
     let t0          = Instant::now();
     let mut total   = 0u64;
-    let mut buf     = vec![0u8; chunk_size];
-    let mut samples = Vec::new();
+    let mut samples = vec![(0u64, 0u64)];  // anchor at origin
     let mut last_sample = t0;
 
+    // Read in 16 KiB blocks so the 40 ms sample interval fires regardless of
+    // chunk_size (can reach 1-2 MB on fast connections).
+    const READ_BLOCK: usize = 16 * 1024;
+    let rblk = chunk_size.min(READ_BLOCK);
+    let mut buf = vec![0u8; rblk];
+    let mut in_chunk = chunk_size;
+
     loop {
-        conn.read_exact(&mut buf)?;
-        total += chunk_size as u64;
+        let want = in_chunk.min(rblk);
+        conn.read_exact(&mut buf[..want])?;
+        total    += want as u64;
+        in_chunk -= want;
 
         let now = Instant::now();
         if now.duration_since(last_sample) >= SAMPLE_INTERVAL {
@@ -103,8 +111,9 @@ pub fn run_download(
             last_sample = now;
         }
 
-        if *buf.last().unwrap() == 0xFF {
-            break;
+        if in_chunk == 0 {
+            if buf[want - 1] == 0xFF { break; }
+            in_chunk = chunk_size;
         }
     }
 
@@ -151,39 +160,50 @@ pub fn run_upload(
     let mut chunk = vec![0u8; chunk_size];
     fastrand::fill(&mut chunk);
 
-    let deadline            = Instant::now() + Duration::from_secs(duration_secs as u64);
-    let t0                  = Instant::now();
-    let mut total           = 0u64;
-    let mut samples         = Vec::new();
-    let mut last_sample     = t0;
+    let deadline              = Instant::now() + Duration::from_secs(duration_secs as u64);
+    let t0                    = Instant::now();
+    let mut total             = 0u64;
+    let mut samples           = vec![(0u64, 0u64)];  // anchor at origin
+    let mut last_sample       = t0;
     let mut last_sample_bytes = 0u64;
+
+    // Write in 16 KiB blocks so the 40 ms sample interval fires even on
+    // asymmetric connections where chunk_size can reach 1-2 MB.
+    const WRITE_BLOCK: usize = 16 * 1024;
+    let wblk = chunk_size.min(WRITE_BLOCK);
 
     loop {
         let terminal = Instant::now() >= deadline;
         *chunk.last_mut().unwrap() = if terminal { 0xFF } else { 0x00 };
-        conn.write_bytes(&chunk)?;
-        total += chunk_size as u64;
 
-        // Don't record a sample on the terminal iteration — the authoritative
-        // final entry (with server-reported time) is always pushed after the loop.
-        if !terminal {
-            let now = Instant::now();
-            if now.duration_since(last_sample) >= SAMPLE_INTERVAL {
-                samples.push((total, now.duration_since(t0).as_nanos() as u64));
+        let mut sent = 0usize;
+        while sent < chunk_size {
+            let want = (chunk_size - sent).min(wblk);
+            conn.write_bytes(&chunk[sent..sent + want])?;
+            sent  += want;
+            total += want as u64;
 
-                if intermediate {
-                    let dt = now.duration_since(last_sample).as_secs_f64();
-                    let db = total - last_sample_bytes;
-                    if dt > 0.0 {
-                        println!(
-                            "  ul[{thread_id:2}] +{:.2} Mbit/s",
-                            db as f64 * 8.0 / dt / 1_000_000.0,
-                        );
+            // Don't record samples on the terminal iteration — the authoritative
+            // final entry (with server-reported time) is pushed after the loop.
+            if !terminal {
+                let now = Instant::now();
+                if now.duration_since(last_sample) >= SAMPLE_INTERVAL {
+                    samples.push((total, now.duration_since(t0).as_nanos() as u64));
+
+                    if intermediate {
+                        let dt = now.duration_since(last_sample).as_secs_f64();
+                        let db = total - last_sample_bytes;
+                        if dt > 0.0 {
+                            println!(
+                                "  ul[{thread_id:2}] +{:.2} Mbit/s",
+                                db as f64 * 8.0 / dt / 1_000_000.0,
+                            );
+                        }
                     }
-                }
 
-                last_sample       = now;
-                last_sample_bytes = total;
+                    last_sample       = now;
+                    last_sample_bytes = total;
+                }
             }
         }
 

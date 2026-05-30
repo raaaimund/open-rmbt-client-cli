@@ -14,8 +14,9 @@ pub struct PretestResult {
 }
 
 // Rows are (min_mbps, thread_count), sorted descending so the first match wins.
+// Upload uses the same aggressive tiers as download: 1 thread only for sub-5 Mbit/s.
 const DL_TABLE: &[(f64, usize)] = &[(100.0, 5), (1.0, 3), (0.0, 1)];
-const UL_TABLE: &[(f64, usize)] = &[(150.0, 5), (80.0, 3), (30.0, 2), (0.0, 1)];
+const UL_TABLE: &[(f64, usize)] = &[(150.0, 5), (5.0, 3), (0.0, 1)];
 
 fn threads_for(mbps: f64, table: &[(f64, usize)]) -> usize {
     table.iter()

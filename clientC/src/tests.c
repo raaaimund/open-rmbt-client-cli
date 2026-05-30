@@ -93,11 +93,15 @@ int run_download(RmbtConn *conn, uint32_t duration_secs,
     snprintf(cmd, sizeof(cmd), "GETTIME %u %zu", duration_secs, chunk_size);
     if (conn_write_line(conn, cmd) < 0) return -1;
 
-    unsigned char *buf = malloc(chunk_size);
+    /* Read in 16 KiB blocks so the 40 ms sample interval fires regardless of
+     * how large chunk_size is (can reach 1-2 MB on fast connections). */
+#define DL_READ_BLOCK (16u * 1024u)
+    size_t rblk = chunk_size < DL_READ_BLOCK ? chunk_size : DL_READ_BLOCK;
+    unsigned char *buf = malloc(rblk);
     if (!buf) return -1;
 
-    /* Pre-allocate sample array: duration/40ms intervals + 1 final entry. */
-    int max_samples = (int)(duration_secs * 25) + 4;
+    /* Pre-allocate: 25 samples/s  +  anchor(1)  +  final(1)  +  headroom(4) */
+    int max_samples = (int)(duration_secs * 25) + 6;
     SpeedSample *samples = malloc((size_t)max_samples * sizeof(SpeedSample));
     if (!samples) { free(buf); return -1; }
     int num_samples = 0;
@@ -106,12 +110,21 @@ int run_download(RmbtConn *conn, uint32_t duration_secs,
     uint64_t total       = 0;
     uint64_t last_sample = t0;
 
+    /* Anchor at origin so speed graphs start at t = 0. */
+    samples[num_samples].bytes   = 0;
+    samples[num_samples].time_ns = 0;
+    num_samples++;
+
+    size_t in_chunk = chunk_size;
+
     for (;;) {
-        if (conn_read_exact(conn, buf, chunk_size) < 0) {
+        size_t want = in_chunk < rblk ? in_chunk : rblk;
+        if (conn_read_exact(conn, buf, want) < 0) {
             free(buf); free(samples);
             return -1;
         }
-        total += chunk_size;
+        total    += want;
+        in_chunk -= want;
 
         uint64_t now = now_ns();
         if (now - last_sample >= SAMPLE_INTERVAL_NS) {
@@ -123,9 +136,11 @@ int run_download(RmbtConn *conn, uint32_t duration_secs,
             last_sample = now;
         }
 
-        if (buf[chunk_size - 1] == 0xFF) break;
+        if (in_chunk == 0) {
+            if (buf[want - 1] == 0xFF) { free(buf); break; }
+            in_chunk = chunk_size;
+        }
     }
-    free(buf);
 
     if (conn_write_line(conn, "OK") < 0) { free(samples); return -1; }
 
@@ -183,7 +198,8 @@ int run_upload(RmbtConn *conn, uint32_t duration_secs,
     for (size_t i = 0; i < chunk_size; i++)
         chunk[i] = (unsigned char)(i & 0xFF);
 
-    int max_samples = (int)(duration_secs * 25) + 4;
+    /* Pre-allocate: 25 samples/s  +  anchor(1)  +  final(1)  +  headroom(4) */
+    int max_samples = (int)(duration_secs * 25) + 6;
     SpeedSample *samples = malloc((size_t)max_samples * sizeof(SpeedSample));
     if (!samples) { free(chunk); return -1; }
     int num_samples = 0;
@@ -194,34 +210,49 @@ int run_upload(RmbtConn *conn, uint32_t duration_secs,
     uint64_t last_sample      = t0;
     uint64_t last_sample_bytes = 0;
 
+    /* Anchor at origin so speed graphs start at t = 0. */
+    samples[num_samples].bytes   = 0;
+    samples[num_samples].time_ns = 0;
+    num_samples++;
+
+    /* Write in 16 KiB blocks so the 40 ms sample interval fires even on
+     * asymmetric connections where chunk_size can reach 1-2 MB. */
+#define UL_WRITE_BLOCK (16u * 1024u)
+    size_t wblk = chunk_size < UL_WRITE_BLOCK ? chunk_size : UL_WRITE_BLOCK;
+
     for (;;) {
         int terminal = now_ns() >= deadline;
         chunk[chunk_size - 1] = terminal ? 0xFF : 0x00;
 
-        if (conn_write_bytes(conn, chunk, chunk_size) < 0) {
-            free(chunk); free(samples);
-            return -1;
-        }
-        total += chunk_size;
-
-        uint64_t now = now_ns();
-        if (now - last_sample >= SAMPLE_INTERVAL_NS) {
-            if (num_samples < max_samples - 1) {
-                samples[num_samples].bytes   = total;
-                samples[num_samples].time_ns = now - t0;
-                num_samples++;
+        size_t sent = 0;
+        while (sent < chunk_size) {
+            size_t want = (chunk_size - sent) < wblk ? (chunk_size - sent) : wblk;
+            if (conn_write_bytes(conn, chunk + sent, want) < 0) {
+                free(chunk); free(samples);
+                return -1;
             }
+            sent  += want;
+            total += want;
 
-            if (intermediate) {
-                double   dt = (now - last_sample) / 1e9;
-                uint64_t db = total - last_sample_bytes;
-                if (dt > 0.0)
-                    printf("  ul[%2d] +%.2f Mbit/s\n",
-                           thread_id, (double)db * 8.0 / dt / 1e6);
+            if (!terminal) {
+                uint64_t now = now_ns();
+                if (now - last_sample >= SAMPLE_INTERVAL_NS) {
+                    if (num_samples < max_samples - 1) {
+                        samples[num_samples].bytes   = total;
+                        samples[num_samples].time_ns = now - t0;
+                        num_samples++;
+                    }
+                    if (intermediate) {
+                        double   dt = (now - last_sample) / 1e9;
+                        uint64_t db = total - last_sample_bytes;
+                        if (dt > 0.0)
+                            printf("  ul[%2d] +%.2f Mbit/s\n",
+                                   thread_id, (double)db * 8.0 / dt / 1e6);
+                    }
+                    last_sample       = now;
+                    last_sample_bytes = total;
+                }
             }
-
-            last_sample       = now;
-            last_sample_bytes = total;
         }
 
         if (terminal) break;

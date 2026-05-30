@@ -17,11 +17,13 @@ static uint64_t now_ns(void)
     return (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 }
 
-/* Thread-count tables: {min_mbps, threads}, descending. */
+/* Thread-count tables: {min_mbps, threads}, descending.
+ * Upload uses the same aggressive tiers as download: 1 thread only for
+ * sub-5 Mbit/s connections; moderate and fast connections get 3 or 5 threads. */
 static const double DL_THRESH[] = { 100.0, 1.0, 0.0 };
 static const int    DL_COUNT[]  = {   5,   3,   1   };
-static const double UL_THRESH[] = { 150.0, 80.0, 30.0, 0.0 };
-static const int    UL_COUNT[]  = {   5,    3,    2,   1   };
+static const double UL_THRESH[] = { 150.0, 5.0, 0.0 };
+static const int    UL_COUNT[]  = {   5,   3,   1   };
 
 static int threads_for(double mbps, const double *thresh, const int *count, int n)
 {
