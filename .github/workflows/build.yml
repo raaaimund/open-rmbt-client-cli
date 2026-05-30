@@ -265,13 +265,6 @@ jobs:
           INITIAL=$(git rev-list --max-parents=0 HEAD)
           echo "count=$(git rev-list --count ${INITIAL}..HEAD)" >> $GITHUB_OUTPUT
 
-      - name: Locate JAR name
-        id: jar
-        shell: bash
-        run: |
-          path=$(find jar-input -name 'rmbt-client-*.jar' ! -name 'original-*' | head -1)
-          echo "name=$(basename "$path")" >> $GITHUB_OUTPUT
-
       - name: Create app image (Linux / macOS)
         if: runner.os != 'Windows'
         run: |
@@ -279,7 +272,7 @@ jobs:
           jpackage \
             --input jar-input \
             --name rmbt-client \
-            --main-jar "${{ steps.jar.outputs.name }}" \
+            --main-jar rmbt-client.jar \
             --main-class at.rtr.rmbt.client.Main \
             --type app-image \
             --app-version "1.0.${{ steps.ver.outputs.count }}" \
@@ -293,9 +286,10 @@ jobs:
           jpackage `
             --input jar-input `
             --name rmbt-client `
-            --main-jar "${{ steps.jar.outputs.name }}" `
+            --main-jar rmbt-client.jar `
             --main-class at.rtr.rmbt.client.Main `
             --type app-image `
+            --win-console `
             --app-version "1.0.${{ steps.ver.outputs.count }}" `
             --vendor RTR `
             --dest jpackage-out
