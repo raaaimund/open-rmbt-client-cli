@@ -5,8 +5,9 @@ This project contains CLI clients for conducting measurements based on
 the RMBT protocol implmented in 
 
 - Rust, 
-- C and 
-- Java.
+- C,
+- Java and
+- Python (stdlib only, no third-party dependencies).
 
 This implementation is based on the 2012 Java client, originally developed
 for a Java Applet (browser plugin) and for the Android client. In 2026 this

@@ -334,11 +334,40 @@ jobs:
           retention-days: 90
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # Python: syntax-check + source package (stdlib only, no compilation needed)
+  # ─────────────────────────────────────────────────────────────────────────────
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Check syntax
+        run: python -m compileall clientPython/rmbt_client -q
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cd clientPython
+          zip -r ../dist/rmbt-client-python.zip rmbt_client --exclude '**/__pycache__/*' --exclude '**/*.pyc'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python
+          path: dist/rmbt-client-python.zip
+          retention-days: 90
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # GitHub Release — only on tag push
   # ─────────────────────────────────────────────────────────────────────────────
   release:
     runs-on: ubuntu-latest
-    needs: [java-jar, rust, c, c-macos, java-native, source-zip]
+    needs: [java-jar, rust, c, c-macos, java-native, python, source-zip]
     if: github.ref_type == 'tag'
     permissions:
       contents: write
@@ -366,5 +395,6 @@ jobs:
             release-assets/java-linux-x64/*.zip
             release-assets/java-macos-arm64/*.zip
             release-assets/java-windows-x64/*.zip
+            release-assets/python/*.zip
             release-assets/source/*.zip
           token: ${{ secrets.GITHUB_TOKEN }}
