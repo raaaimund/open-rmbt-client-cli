@@ -46,7 +46,7 @@ def _run_phase(n, addr, port, use_tls, no_tls_verify, protocol,
 
 def main():
     parser = argparse.ArgumentParser(
-        prog='rmbt-nettest',
+        prog='rmbt-client',
         description='RMBT network measurement client',
         add_help=False,
     )
@@ -56,7 +56,7 @@ def main():
     parser.add_argument('-p', '--port',         type=int,  metavar='PORT',
                         help='Override test server port')
     parser.add_argument('-u', '--uuid',         metavar='UUID',
-                        help='Client UUID (uses/creates ~/.rmbt_nettest_uuid if omitted)')
+                        help='Client UUID (uses/creates ~/.rmbt_client_uuid if omitted)')
     parser.add_argument('-t', '--threads',      type=int,  metavar='N',
                         help='Force thread count for download and upload')
     parser.add_argument('-d', '--duration',     type=int,  metavar='SECS',
@@ -211,7 +211,7 @@ def main():
         'model':                   'Client CLI Python',
         'network_type':            98,
         'platform':                'CLI',
-        'product':                 'rmbt-nettest-python',
+        'product':                 'rmbt-client-python',
         'pings':                   [{'value': r.client_ns, 'value_server': r.server_ns,
                                      'time_ns': r.time_ns} for r in ping_results],
         'test_bytes_download':     dl_bytes,

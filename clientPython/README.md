@@ -1,4 +1,4 @@
-# rmbt-nettest (Python)
+# rmbt-client (Python)
 
 RMBT network measurement client written in Python. Performs ping, download, and upload phases against an RMBT measurement server and submits results to the control server.
 
@@ -10,19 +10,19 @@ RMBT network measurement client written in Python. Performs ping, download, and 
 ## Usage
 
 ```sh
-python -m rmbt_nettest --host https://measure.example.com
+python -m rmbt_client --host https://measure.example.com
 ```
 
 Run with a specific thread count and duration:
 
 ```sh
-python -m rmbt_nettest --host https://measure.example.com --threads 4 --duration 10
+python -m rmbt_client --host https://measure.example.com --threads 4 --duration 10
 ```
 
 Skip TLS verification against a local test server:
 
 ```sh
-python -m rmbt_nettest --host https://localhost:8080 --no-tls-verify
+python -m rmbt_client --host https://localhost:8080 --no-tls-verify
 ```
 
 ### Options
@@ -31,7 +31,7 @@ python -m rmbt_nettest --host https://localhost:8080 --no-tls-verify
 |------|-------------|
 | `-h`, `--host URL` | Control server base URL **(required)** |
 | `-p`, `--port PORT` | Override test server port |
-| `-u`, `--uuid UUID` | Client UUID (uses/creates `~/.rmbt_nettest_uuid` if omitted) |
+| `-u`, `--uuid UUID` | Client UUID (uses/creates `~/.rmbt_client_uuid` if omitted) |
 | `-t`, `--threads N` | Force thread count for download and upload (overrides pre-test) |
 | `-d`, `--duration SECS` | Test duration in seconds (default: from control server) |
 | `--ws` | Use WebSocket (RMBTws) framing instead of plain HTTP upgrade |
