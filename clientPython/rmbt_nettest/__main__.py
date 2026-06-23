@@ -2,6 +2,7 @@ import argparse
 import sys
 import time
 import threading
+from urllib.parse import urlparse
 
 from . import control, connection, pretest, tests, uuid_store
 
@@ -45,7 +46,7 @@ def _run_phase(n, addr, port, use_tls, no_tls_verify, protocol,
 
 def main():
     parser = argparse.ArgumentParser(
-        prog='rmbt-client',
+        prog='rmbt-nettest',
         description='RMBT network measurement client',
         add_help=False,
     )
@@ -55,7 +56,7 @@ def main():
     parser.add_argument('-p', '--port',         type=int,  metavar='PORT',
                         help='Override test server port')
     parser.add_argument('-u', '--uuid',         metavar='UUID',
-                        help='Client UUID (uses/creates ~/.rmbt_client_uuid if omitted)')
+                        help='Client UUID (uses/creates ~/.rmbt_nettest_uuid if omitted)')
     parser.add_argument('-t', '--threads',      type=int,  metavar='N',
                         help='Force thread count for download and upload')
     parser.add_argument('-d', '--duration',     type=int,  metavar='SECS',
@@ -183,7 +184,9 @@ def main():
           f'  ({ul_bytes} bytes in {ul_ns / 1e9:.2f}s, {len(ul_results)} thread(s))')
 
     if params.open_test_uuid:
-        print(f'Result:         https://www.netztest.at/share/{params.open_test_uuid}')
+        _base = urlparse(host)
+        _share_url = f"{_base.scheme}://{_base.netloc}/share/{params.open_test_uuid}"
+        print(f'Result:         {_share_url}')
 
     # ── Step 7: submit results ───────────────────────────────────────────────────
     print('\nSubmitting results to control server...')
@@ -208,7 +211,7 @@ def main():
         'model':                   'Client CLI Python',
         'network_type':            98,
         'platform':                'CLI',
-        'product':                 'rmbt-client-python',
+        'product':                 'rmbt-nettest-python',
         'pings':                   [{'value': r.client_ns, 'value_server': r.server_ns,
                                      'time_ns': r.time_ns} for r in ping_results],
         'test_bytes_download':     dl_bytes,

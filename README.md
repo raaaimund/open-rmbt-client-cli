@@ -20,12 +20,6 @@ The Rust, C, and Java clients were developed by RTR-Netztest. The Python
 client was added in this fork.
 
 
-Get in Touch
-------------
-
-* [RTR-Netztest](https://www.netztest.at) on the web
-
-
 License
 -------
 

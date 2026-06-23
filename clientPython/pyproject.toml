@@ -3,16 +3,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "rmbt-client"
+name = "rmbt-nettest"
 dynamic = ["version"]
 description = "RMBT network measurement client — performs ping, download, and upload speed tests against an RMBT measurement server"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.7"
 authors = [
-  { name = "RTR-Netztest" },
+  { name = "raaaimund" },
 ]
-keywords = ["rmbt", "speedtest", "network", "measurement", "netztest"]
+keywords = ["rmbt", "speedtest", "network", "measurement"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
@@ -31,21 +31,21 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://www.netztest.at"
+Homepage = "https://github.com/raaaimund/open-rmbt-client-cli"
 Repository = "https://github.com/raaaimund/open-rmbt-client-cli"
 Issues = "https://github.com/raaaimund/open-rmbt-client-cli/issues"
 
 [project.scripts]
-rmbt-client = "rmbt_client.__main__:main"
+rmbt-nettest = "rmbt_nettest.__main__:main"
 
 [tool.hatch.version]
-path = "rmbt_client/__init__.py"
+path = "rmbt_nettest/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["rmbt_client"]
+packages = ["rmbt_nettest"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "rmbt_client/",
+  "rmbt_nettest/",
   "README.md",
 ]

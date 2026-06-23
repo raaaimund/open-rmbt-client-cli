@@ -1,6 +1,6 @@
 import pathlib
 
-_UUID_FILE = pathlib.Path.home() / '.rmbt_client_uuid'
+_UUID_FILE = pathlib.Path.home() / '.rmbt_nettest_uuid'
 
 
 def load():
