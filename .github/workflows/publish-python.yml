@@ -6,27 +6,56 @@ on:
       - 'python-v*'
 
 jobs:
-  build:
+  # Pure-Python sdist — used as fallback when no pre-built wheel matches.
+  sdist:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-
-      - name: Build distribution
+      - name: Build sdist
         run: |
           pip install build
-          python -m build clientPython/
+          python -m build --sdist clientPython/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-sdist
+          path: clientPython/dist/*.tar.gz
+
+  # Pre-compiled manylinux wheels for the architectures Home Assistant runs on:
+  #   x86_64  — NUC / generic x86 VM / Docker desktop
+  #   aarch64 — Raspberry Pi 4 / 5 (64-bit HAOS), most modern ARM boards
+  #   armv7l  — Raspberry Pi 3 and older (32-bit HAOS)
+  wheels:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64, armv7l]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU (cross-arch emulation)
+        if: matrix.arch != 'x86_64'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build wheels (${{ matrix.arch }})
+        uses: pypa/cibuildwheel@v2
+        with:
+          package-dir: clientPython/
+          output-dir: dist/
+        env:
+          # Only CPython 3.13, manylinux (glibc ≥ 2.17 — all current HAOS versions).
+          CIBW_BUILD: "cp313-manylinux*"
+          CIBW_ARCHS: ${{ matrix.arch }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: clientPython/dist/
+          name: dist-${{ matrix.arch }}
+          path: dist/*.whl
 
   publish:
-    needs: build
+    needs: [sdist, wheels]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -34,7 +63,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: dist
+          pattern: dist-*
+          merge-multiple: true
           path: dist/
 
       - name: Publish to PyPI
