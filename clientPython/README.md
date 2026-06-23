@@ -1,5 +1,7 @@
 # rmbt-client (Python)
 
+[![PyPI](https://img.shields.io/pypi/v/rmbt-client)](https://pypi.org/project/rmbt-client/)
+
 RMBT network measurement client written in Python. Performs ping, download, and upload phases against an RMBT measurement server and submits results to the control server.
 
 ## Requirements
