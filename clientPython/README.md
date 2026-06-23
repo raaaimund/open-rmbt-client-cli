@@ -41,11 +41,37 @@ python -m rmbt_client --host https://localhost:8080 --no-tls-verify
 | `--intermediate` | Print upload throughput every 40 ms per thread |
 | `--help` | Print help |
 
-## Performance note
+## Performance
 
-Python's GIL (Global Interpreter Lock) limits true parallel execution across threads. On a 100 Gbit/s back-to-back test system the client achieves roughly **8 Gbit/s downstream and 6.3 Gbit/s upstream** (with some run-to-run variation), compared to ~32 Gbit/s in both directions for the Rust client.
+Starting with v1.1.0 the download and upload hot loops run inside a small C extension (`rmbt_loop`) that calls `Py_BEGIN_ALLOW_THREADS` before entering the tight `recv()`/`send()` loop. This releases the GIL for the entire bulk-data phase, allowing all measurement threads to transfer data truly in parallel.
 
-For typical home and office connections (up to ~1 Gbit/s) this is not a concern. On high-bandwidth links or low-powered hardware (e.g. a Raspberry Pi or a home router) the CPU may become the bottleneck before the network link is saturated, leading to results that understate the true available bandwidth.
+The extension is compiled automatically when the package is installed from source (requires `gcc` and `python3-dev`). Pre-built **manylinux wheels** are published to PyPI for the three architectures Home Assistant runs on:
+
+| Architecture | Covers |
+|---|---|
+| `x86_64` | NUC, generic x86 VM, Docker on x86 |
+| `aarch64` | Raspberry Pi 4 / 5, modern ARM boards (64-bit) |
+| `armv7l` | Raspberry Pi 3 and older (32-bit) |
+
+When the extension is not available (e.g. unsupported platform, missing compiler) the client falls back silently to the pure-Python implementation.
+
+### Measured throughput
+
+The numbers below are from a **loopback test** (`127.0.0.1`, 4 threads, 7 s) on an x86-64 machine. They reflect CPU throughput, not a real network:
+
+| Client | Download | Upload |
+|---|---|---|
+| Python 1.1.0 (C extension, loopback) | ~94 Gbit/s | ~68 Gbit/s |
+| Python 1.0.0 (pure Python, loopback) | ~8 Gbit/s | ~6 Gbit/s |
+| Rust (loopback) | ~32 Gbit/s | ~32 Gbit/s |
+
+> **No test on a real 100 Gbit/s network has been performed.** On an actual high-speed link, factors such as NIC driver overhead, interrupt coalescing, and kernel socket buffer tuning will dominate long before the Python vs. C difference matters. For typical home and office connections (up to ~10 Gbit/s) either implementation is more than fast enough.
+
+To force the pure-Python path for benchmarking or debugging:
+
+```sh
+RMBT_PURE_PYTHON=1 python -m rmbt_client --host https://measure.example.com
+```
 
 ## Protocol
 
