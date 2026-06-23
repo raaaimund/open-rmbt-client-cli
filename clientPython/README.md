@@ -41,6 +41,12 @@ python -m rmbt_client --host https://localhost:8080 --no-tls-verify
 | `--intermediate` | Print upload throughput every 40 ms per thread |
 | `--help` | Print help |
 
+## Performance note
+
+Python's GIL (Global Interpreter Lock) limits true parallel execution across threads. On a 100 Gbit/s back-to-back test system the client achieves roughly **8 Gbit/s downstream and 6.3 Gbit/s upstream** (with some run-to-run variation), compared to ~32 Gbit/s in both directions for the Rust client.
+
+For typical home and office connections (up to ~1 Gbit/s) this is not a concern. On high-bandwidth links or low-powered hardware (e.g. a Raspberry Pi or a home router) the CPU may become the bottleneck before the network link is saturated, leading to results that understate the true available bandwidth.
+
 ## Protocol
 
 1. POST `/RMBTControlServer/settings` → register client, receive UUID
