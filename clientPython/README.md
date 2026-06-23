@@ -59,7 +59,9 @@ When the extension is not available (e.g. unsupported platform, missing compiler
 
 ### Measured throughput
 
-The numbers below are from a **loopback test** (`127.0.0.1`, 4 threads, 7 s) on an x86-64 machine. They reflect CPU throughput, not a real network:
+The numbers below are from a **loopback test** (`127.0.0.1`, 4 threads, 7 s). They reflect CPU throughput, not a real network:
+
+**Test system:** Intel Core i7-1165G7 @ 2.80 GHz (4 cores / 8 threads, 11th Gen), 24 GB RAM, x86_64 Linux
 
 | Client | Download | Upload |
 |---|---|---|
