@@ -14,7 +14,10 @@ the RMBT protocol implemented in
 
 This implementation is based on the 2012 Java client, originally developed
 for a Java Applet (browser plugin) and for the Android client. In 2026 this
-code was reimplemented in Rust, C and modern Java (Version 2.x).
+code was reimplemented in Rust, C and modern Java (Version 2.x). Please note
+that this code is intented for development and verification purposes. 
+
+It is not offered as part of RTR-Nettest.
 
 The Rust, C, and Java clients were developed by RTR-Netztest. The Python
 client was added in this fork.
